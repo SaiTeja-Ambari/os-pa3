@@ -101,31 +101,38 @@ void Scheduler::rr() {
 }
 
 //preemptive priority
+// preemptive priority with time quantum
 void Scheduler::pp() {
-    int low_prio;
-    int low_index = -1;
+    // Decrement timer
+    if(timer > 0) timer -= .5;
+    
+    // Set the highest (which is actually the lowest number) priority seen to that of the current process or infinity if CPU is idle
+    int highest_prio = cpu->isidle() ? INT_MAX : cpu->getpcb()->priority;
 
-    //if cpu is idle, set next pcb in queue as lowest priority initially
-    if(!cpu->isidle()) low_prio = cpu->getpcb()->priority;
-    else{
-        low_prio = ready_queue->gethead()->priority;
-        low_index = 0;
-    }
+    // Assume by default that we will continue with the current process (no preemption)
+    int highest_prio_index = -1;  
 
-    //search through entire queue for actual lowest priority
+    // Search for the highest priority process in the ready queue
     for(int index = 0; index < ready_queue->size(); ++index){
         int temp_prio = ready_queue->getindex(index)->priority;
-        if(temp_prio < low_prio){ //less than ensures FCFS is used for ties
-            low_prio = temp_prio;
-            low_index = index;
+        if(temp_prio < highest_prio){  // Lower number is higher priority
+            highest_prio = temp_prio;
+            highest_prio_index = index;
         }
     }
 
-    //only -1 if couldn't find a pcb to schedule, happens if cpu is already working on lowest priority
-    if(low_index >= 0){
-        next_pcb_index = low_index;
-        dispatcher->interrupt();
+    // If the timer has run out or a higher priority process has arrived, preempt the current process
+    if(highest_prio_index >= 0 && (timer <= 0 || highest_prio < cpu->getpcb()->priority)){
+        timer = timeq; // Reset the timer for the next process
+        next_pcb_index = highest_prio_index; // Set the next process to the one with the highest priority
+        dispatcher->interrupt(); // Call the dispatcher to perform the context switch
     }
+    else if(cpu->isidle()){ // If the CPU is idle, schedule the highest priority process immediately
+        timer = timeq; // Reset the timer for the next process
+        next_pcb_index = highest_prio_index >= 0 ? highest_prio_index : 0; // Ensure we have a valid process index
+        dispatcher->interrupt(); // Call the dispatcher to perform the context switch
+    }
+    // If no preemption is necessary and the CPU is not idle, continue without interrupting
 }
 
 /*
